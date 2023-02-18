@@ -29,7 +29,9 @@ app.get("/",(req,res) => {
             connection.query("SELECT * FROM `users` WHERE `isadmin`=0",function(err,staffs_){
             connection.query("SELECT * FROM `halls`",function(err,halls_){
             connection.query("SELECT * FROM `examduty`",function(err,result){
-                res.render("admin",{username:cookie[req.cookies['login']]["username"],staffs:staffs_,halls:halls_,exams:result});
+            connection.query("SELECT * FROM `biometric`",function(err,biometrics){
+                res.render("admin",{username:cookie[req.cookies['login']]["username"],staffs:staffs_,halls:halls_,exams:result,biometric:biometrics});
+            });
             });
             });
             });
@@ -53,7 +55,9 @@ app.get("/",(req,res) => {
             connection.query("SELECT * FROM `examduty`",function(err,allExamDuty){
             connection.query("SELECT * FROM `examduty` where  JSON_CONTAINS(examduty.staffs, '\""+cookie[req.cookies['login']]["id"]+"\"','$.staffs');",function(err,exams_){
             connection.query("SELECT * FROM `allotment` WHERE `staff_id`="+cookie[req.cookies['login']]["id"],function(err,result){
+            
                 res.render("user",{userid:cookie[req.cookies['login']]["id"],username:cookie[req.cookies['login']]["name"],biometric:bioMA,keptAt:bioKep,exams:exams_,allExams:allExamDuty,allotments:result});
+            
             });
             });
             });
@@ -69,10 +73,23 @@ app.post("/",(req,res) => {
         return;
     }
 
+    if("addStaff" in req.body){
+        connection.query(
+            "INSERT INTO `users`(`username`,`mail`,`dept`) VALUES ('"+req.body["username"]+"','"+req.body["mail"]+"','"+req.body["dept"]+"')", 
+            function (err, result) {if (err){throw err;}}
+        );
+        res.redirect("/");
+        return; 
+    }
+
+    if("addStaffsCSV" in req.body){
+        console.log(req.body);
+    }
+
     if("createExamDuty" in req.body){
         req.body["staffs[]"] = {"staffs":req.body["staffs[]"]};
         connection.query(
-            "INSERT INTO `examduty`(`exam_id`,`exam_title`,`exam_date`,`exam_time`,`staffs`,`halls`) VALUES ("+req.body["id"]+",'"+req.body["title"]+"','"+req.body["datetime"]+"',"+req.body["examtime"]+",'"+JSON.stringify( req.body["staffs[]"] )+"','"+req.body["halls[]"]+"')", 
+            "INSERT INTO `examduty`(`exam_id`,`exam_title`,`exam_date`,`exam_time`,`staffs`,`halls`,`buffer`) VALUES ("+req.body["id"]+",'"+req.body["title"]+"','"+req.body["datetime"]+"',"+req.body["examtime"]+",'"+JSON.stringify( req.body["staffs[]"] )+"','"+req.body["halls[]"]+"','"+req.body.buffer+"')", 
             function (err, result) {if (err){throw err;}}
         );
         res.redirect("/");
@@ -103,6 +120,13 @@ app.post("/biometric",(req,res) => {
         "SELECT * FROM `examduty` where  JSON_CONTAINS(examduty.staffs, '\""+req.body.staff+"\"','$.staffs');", 
         function (err, result) {
             if (err){throw err;}
+
+            if(res.length > 1 && res[0].halls == ""){
+                connection.query("INSERT INTO `allotment`(`staff_id`, `hall_name`, `exam_id`) VALUES ('"+req.body.staff+"','Buffer','"+exams[i]["exam_id"]+"')", function (err, result) { if (err){throw err;} })
+                res.redirect("/");
+                return;
+            }
+
             let exams = result;
             let userid = req.body.staff; 
             let staffs = [];let userindutyFlag = 0;
@@ -142,7 +166,9 @@ app.post("/biometric",(req,res) => {
                 connection.query(
                     "SELECT hall_name from halls where hall_id = "+halls[index],
                     function (err, result){
-                        let hall_name = result[0]["hall_name"];
+                        let hall_name;
+                        if(result != null && result.length > 0) hall_name = result[0]["hall_name"];
+                        else hall_name = "Buffer";
                         connection.query(
                             "INSERT INTO `allotment`(`staff_id`, `hall_name`, `exam_id`) VALUES ('"+req.body.staff+"','"+hall_name+"','"+exams[i]["exam_id"]+"')", 
                             function (err, result) {
